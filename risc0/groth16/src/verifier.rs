@@ -124,6 +124,39 @@ impl Verifier {
         })
     }
 
+    /// like new, but takes a parsed proof rather than a seal
+    pub fn new_from_proof(
+        proof: &Proof<Bn254>,
+        public_inputs: &[Fr],
+        verifying_key: &VerifyingKey,
+    ) -> Result<Self, Error> {
+        let pvk = ark_groth16::prepare_verifying_key(&verifying_key.0);
+        let mut encoded_pvk = Vec::new();
+        pvk.serialize_uncompressed(&mut encoded_pvk)
+            .map_err(|err| anyhow!(err))?;
+
+        let mut encoded_proof = Vec::new();
+        proof
+            .serialize_uncompressed(&mut encoded_proof)
+            .map_err(|err| anyhow!(err))?;
+
+        let mut encoded_prepared_inputs = Vec::new();
+        let prepared_inputs = Groth16::<Bn254>::prepare_inputs(
+            &pvk,
+            &public_inputs.iter().map(|x| x.0).collect::<Vec<_>>(),
+        )
+        .map_err(|err| anyhow!(err))?;
+        prepared_inputs
+            .serialize_uncompressed(&mut encoded_prepared_inputs)
+            .map_err(|err| anyhow!(err))?;
+
+        Ok(Self {
+            encoded_pvk,
+            encoded_proof,
+            encoded_prepared_inputs,
+        })
+    }
+
     /// Create a Verifier given the JSON representation of the proof, public inputs and verifier
     /// key.
     pub fn from_json(
@@ -158,7 +191,7 @@ impl Verifier {
 
 /// Verifying key for Groth16 proofs.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Fr(#[serde(with = "serde_ark")] pub(crate) ark_bn254::Fr);
+pub struct Fr(#[serde(with = "serde_ark")] pub ark_bn254::Fr);
 
 impl Digestible for Fr {
     /// Compute a tagged hash of the [Fr] value.
@@ -178,7 +211,7 @@ impl Digestible for Fr {
 
 /// Verifying key for Groth16 proofs.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct VerifyingKey(#[serde(with = "serde_ark")] pub(crate) ark_groth16::VerifyingKey<Bn254>);
+pub struct VerifyingKey(#[serde(with = "serde_ark")] pub ark_groth16::VerifyingKey<Bn254>);
 
 /// Hash a point on G1 or G2 by hashing the concatenated big-endian representation of (x, y).
 fn hash_point<S: Sha256>(p: impl AffineRepr) -> Digest {
